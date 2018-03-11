@@ -31,6 +31,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html/charset"
 )
 
 const (
@@ -191,6 +193,9 @@ type Options struct {
 
 	// Status message
 	StatusMessage string
+
+	// NoXMLHeader Do not start with <?xml ...> header
+	NoXMLHeader bool
 }
 
 // NewClient establishes a new Client connection based on a set of Options.
@@ -528,11 +533,15 @@ func (c *Client) startStream(o *Options, domain string) (*streamFeatures, error)
 	} else {
 		c.p = xml.NewDecoder(c.conn)
 	}
-
-	_, err := fmt.Fprintf(c.conn, "<?xml version='1.0'?>\n"+
+	c.p.CharsetReader = charset.NewReaderLabel
+	header := ""
+	if !o.NoXMLHeader {
+		header = "<?xml version='1.0'?>\n"
+	}
+	_, err := fmt.Fprintf(c.conn, "%s"+
 		"<stream:stream to='%s' xmlns='%s'\n"+
 		" xmlns:stream='%s' version='1.0'>\n",
-		xmlEscape(domain), nsClient, nsStream)
+		header, xmlEscape(domain), nsClient, nsStream)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +666,7 @@ func (c *Client) Send(chat Chat) (n int, err error) {
 	if chat.Thread != `` {
 		thdtext = `<thread>` + xmlEscape(chat.Thread) + `</thread>`
 	}
-	return fmt.Fprintf(c.conn, "<message to='%s' type='%s' xml:lang='en'>" + subtext + "<body>%s</body>" + thdtext + "</message>",
+	return fmt.Fprintf(c.conn, "<message to='%s' type='%s' xml:lang='en'>"+subtext+"<body>%s</body>"+thdtext+"</message>",
 		xmlEscape(chat.Remote), xmlEscape(chat.Type), xmlEscape(chat.Text))
 }
 
@@ -791,6 +800,8 @@ type XMLElement struct {
 func (e *XMLElement) String() string {
 	r := bytes.NewReader([]byte(e.InnerXML))
 	d := xml.NewDecoder(r)
+	d.CharsetReader = charset.NewReaderLabel
+
 	var buf bytes.Buffer
 	for {
 		tok, err := d.Token()
