@@ -63,6 +63,7 @@ type Client struct {
 	conn   net.Conn // connection to server
 	jid    string   // Jabber ID for our connection
 	domain string
+	cookie Cookie
 	p      *xml.Decoder
 }
 
@@ -196,6 +197,9 @@ type Options struct {
 
 	// NoXMLHeader Do not start with <?xml ...> header
 	NoXMLHeader bool
+
+	// NoPresence Send Presence
+	NoPresence bool
 }
 
 // NewClient establishes a new Client connection based on a set of Options.
@@ -452,13 +456,13 @@ func (c *Client) init(o *Options) error {
 	}
 
 	// Generate a unique cookie
-	cookie := getCookie()
+	c.cookie = getCookie()
 
 	// Send IQ message asking to bind to the local user name.
 	if o.Resource == "" {
-		fmt.Fprintf(c.conn, "<iq type='set' id='%x'><bind xmlns='%s'></bind></iq>\n", cookie, nsBind)
+		fmt.Fprintf(c.conn, "<iq type='set' id='%x'><bind xmlns='%s'></bind></iq>\n", c.cookie, nsBind)
 	} else {
-		fmt.Fprintf(c.conn, "<iq type='set' id='%x'><bind xmlns='%s'><resource>%s</resource></bind></iq>\n", cookie, nsBind, o.Resource)
+		fmt.Fprintf(c.conn, "<iq type='set' id='%x'><bind xmlns='%s'><resource>%s</resource></bind></iq>\n", c.cookie, nsBind, o.Resource)
 	}
 	var iq clientIQ
 	if err = c.p.DecodeElement(&iq, nil); err != nil {
@@ -472,11 +476,13 @@ func (c *Client) init(o *Options) error {
 
 	if o.Session {
 		//if server support session, open it
-		fmt.Fprintf(c.conn, "<iq to='%s' type='set' id='%x'><session xmlns='%s'/></iq>", xmlEscape(domain), cookie, nsSession)
+		fmt.Fprintf(c.conn, "<iq to='%s' type='set' id='%x'><session xmlns='%s'/></iq>", xmlEscape(domain), c.cookie, nsSession)
 	}
 
 	// We're connected and can now receive and send messages.
-	fmt.Fprintf(c.conn, "<presence xml:lang='en'><show>%s</show><status>%s</status></presence>", o.Status, o.StatusMessage)
+	if !o.NoPresence {
+		fmt.Fprintf(c.conn, "<presence xml:lang='en'><show>%s</show><status>%s</status></presence>", o.Status, o.StatusMessage)
+	}
 
 	return nil
 }
